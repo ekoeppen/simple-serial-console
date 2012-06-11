@@ -9,13 +9,13 @@
 #include <sys/time.h>
 
 int transfer_fails( int in, int out ) {
-  unsigned char buf[512];
+  unsigned char buffer[512];
 
-  int byte_count = read( in, buf, sizeof( buf ) );
+  int byte_count = read( in, buffer, sizeof( buffer ) );
   if ( byte_count == 0 )
     return 1;
 
-  write( out, buf, byte_count );
+  write( out, buffer, byte_count );
   return 0;
 }
 
