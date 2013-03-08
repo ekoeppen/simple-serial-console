@@ -8,16 +8,24 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
-int transfer_fails(int in, int out)
+int transfer_to_serial(int in, int out)
+{
+	unsigned char c;
+
+	int byte_count = read(in, &c, sizeof(c));
+	if (byte_count > 0)
+		write(out, &c, byte_count);
+	return byte_count;
+}
+
+int transfer_from_serial(int in, int out)
 {
 	unsigned char buffer[512];
 
 	int byte_count = read(in, buffer, sizeof(buffer));
-	if (byte_count == 0)
-		return 1;
-
-	write(out, buffer, byte_count);
-	return 0;
+	if (byte_count > 0)
+		write(out, buffer, byte_count);
+	return byte_count;
 }
 
 void configure_input(int in, struct termios *old_options)
@@ -71,6 +79,7 @@ int main(int argc, char **argv)
 	int speed;
 	struct termios old_input_options;
 	struct timeval timeout;
+	fd_set readfds;
 
 	if (argc < 2) {
 		printf("Please specify a terminal.\n");
@@ -89,7 +98,6 @@ int main(int argc, char **argv)
 	configure_input(in, &old_input_options);
 
 	for (;;) {
-		fd_set readfds;
 		FD_ZERO(&readfds);
 		FD_SET(terminal, &readfds);
 		FD_SET(in, &readfds);
@@ -100,10 +108,10 @@ int main(int argc, char **argv)
 		if (select(FD_SETSIZE, &readfds, NULL, NULL, &timeout) == -1) {
 			break;
 		} else {
-			if (FD_ISSET(terminal, &readfds) && transfer_fails(terminal, out))
+			if (FD_ISSET(terminal, &readfds) && transfer_from_serial(terminal, out) == 0)
 				break;
 
-			if (FD_ISSET(in, &readfds) && transfer_fails(in, terminal))
+			if (FD_ISSET(in, &readfds) && transfer_to_serial(in, terminal) == 0)
 				break;
 		}
 	}
