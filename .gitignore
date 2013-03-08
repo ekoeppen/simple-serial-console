@@ -10,3 +10,10 @@
 *.lai
 *.la
 *.a
+
+# Executables
+serial
+
+# Misc
+
+*.swp
