@@ -11,8 +11,9 @@
 int transfer_to_serial(int in, int out)
 {
 	unsigned char c;
+	int byte_count;
 
-	int byte_count = read(in, &c, sizeof(c));
+	byte_count = read(in, &c, sizeof(c));
 	if (byte_count > 0)
 		write(out, &c, byte_count);
 	return byte_count;
@@ -21,8 +22,9 @@ int transfer_to_serial(int in, int out)
 int transfer_from_serial(int in, int out)
 {
 	unsigned char buffer[512];
+	int byte_count;
 
-	int byte_count = read(in, buffer, sizeof(buffer));
+	byte_count = read(in, buffer, sizeof(buffer));
 	if (byte_count > 0)
 		write(out, buffer, byte_count);
 	return byte_count;
