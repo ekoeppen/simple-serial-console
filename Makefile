@@ -1,4 +1,4 @@
-CFLAGS = -O2
+CFLAGS = -O2 -Wall
 SRCS = main.c
 PROG = serial
 
