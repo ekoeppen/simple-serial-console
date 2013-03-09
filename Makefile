@@ -7,5 +7,5 @@ all: serial
 clean:
 	rm -f $(PROG)
 
-$(PROG): $(SRCS)
-	$(CC) $(CFLAGS) -o $@ $+
+$(PROG): $(SRCS) Makefile
+	$(CC) $(CFLAGS) -o $@ $(SRCS)
