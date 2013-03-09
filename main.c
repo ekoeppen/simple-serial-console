@@ -8,14 +8,40 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
+#define ESCAPE_CHAR 0x1d
+#define EXIT_CHAR '.'
+#define RESET_CHAR 'r'
+
+#define RESET_SEQUENCE "\033c"
+
+static int escape_state;
+
 int transfer_to_serial(int in, int out)
 {
 	unsigned char c;
 	int byte_count;
 
 	byte_count = read(in, &c, sizeof(c));
-	if (byte_count > 0)
-		write(out, &c, byte_count);
+	if (byte_count > 0) {
+		if (!escape_state) {
+			if (c != ESCAPE_CHAR)
+				write(out, &c, byte_count);
+			else
+				escape_state = 1;
+		} else {
+			switch (c) {
+			case EXIT_CHAR:
+				byte_count = 0;
+				break;
+			case RESET_CHAR:
+				write(out, RESET_SEQUENCE, sizeof(RESET_SEQUENCE));
+				break;
+			default:
+				write(out, &c, byte_count);
+			}
+			escape_state = 0;
+		}
+	}
 	return byte_count;
 }
 
@@ -98,6 +124,8 @@ int main(int argc, char **argv)
 
 	configure_terminal(terminal, speed);
 	configure_input(in, &old_input_options);
+
+	escape_state = 0;
 
 	for (;;) {
 		FD_ZERO(&readfds);
