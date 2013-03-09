@@ -14,9 +14,13 @@
 
 #define RESET_SEQUENCE "\033c"
 
+static int in;
+static int out;
+static int terminal;
+static struct termios old_input_options;
 static int escape_state;
 
-int transfer_to_serial(int in, int out)
+int transfer_to_terminal(void)
 {
 	unsigned char c;
 	int byte_count;
@@ -25,7 +29,7 @@ int transfer_to_serial(int in, int out)
 	if (byte_count > 0) {
 		if (!escape_state) {
 			if (c != ESCAPE_CHAR)
-				write(out, &c, byte_count);
+				write(terminal, &c, byte_count);
 			else
 				escape_state = 1;
 		} else {
@@ -34,10 +38,11 @@ int transfer_to_serial(int in, int out)
 				byte_count = 0;
 				break;
 			case RESET_CHAR:
-				write(out, RESET_SEQUENCE, sizeof(RESET_SEQUENCE));
+				write(terminal, RESET_SEQUENCE,
+						sizeof(RESET_SEQUENCE));
 				break;
 			default:
-				write(out, &c, byte_count);
+				write(terminal, &c, byte_count);
 			}
 			escape_state = 0;
 		}
@@ -45,24 +50,24 @@ int transfer_to_serial(int in, int out)
 	return byte_count;
 }
 
-int transfer_from_serial(int in, int out)
+int transfer_from_terminal(void)
 {
 	unsigned char buffer[512];
 	int byte_count;
 
-	byte_count = read(in, buffer, sizeof(buffer));
+	byte_count = read(terminal, buffer, sizeof(buffer));
 	if (byte_count > 0)
 		write(out, buffer, byte_count);
 	return byte_count;
 }
 
-void configure_input(int in, struct termios *old_options)
+void configure_input(void)
 {
 	struct termios options;
 
 	tcgetattr(in, &options);
 
-	*old_options = options;
+	old_input_options = options;
 
 	options.c_cc[VMIN] = 0;
 	options.c_cc[VTIME] = 10;
@@ -73,7 +78,7 @@ void configure_input(int in, struct termios *old_options)
 	tcsetattr(in, TCSANOW, &options);
 }
 
-void configure_terminal(int terminal, int baud)
+void configure_terminal(int baud)
 {
 	struct termios options;
 
@@ -94,18 +99,34 @@ void configure_terminal(int terminal, int baud)
 	tcsetattr(terminal, TCSANOW, &options);
 }
 
-void unconfigure_input(int in, struct termios *old_options)
+void unconfigure_input(void)
 {
-	tcsetattr(in, TCSANOW, old_options);
+	tcsetattr(in, TCSANOW, &old_input_options);
+}
+
+void signal_handler(int signum)
+{
+	switch (signum) {
+	case SIGQUIT:
+	case SIGINT:
+	case SIGTERM:
+		unconfigure_input();
+		break;
+	default:
+		break;
+	}
+}
+
+void setup_signal_handlers(void)
+{
+	signal(SIGQUIT, signal_handler);
+	signal(SIGINT, signal_handler);
+	signal(SIGTERM, signal_handler);
 }
 
 int main(int argc, char **argv)
 {
-	int in;
-	int out;
-	int terminal;
 	int speed;
-	struct termios old_input_options;
 	struct timeval timeout;
 	fd_set readfds;
 
@@ -122,11 +143,11 @@ int main(int argc, char **argv)
 	out = dup(1);
 	terminal = open(argv[1], O_RDWR | O_NOCTTY | O_NONBLOCK);
 
-	configure_terminal(terminal, speed);
-	configure_input(in, &old_input_options);
+	configure_terminal(speed);
+	configure_input();
 
+	setup_signal_handlers();
 	escape_state = 0;
-
 	for (;;) {
 		FD_ZERO(&readfds);
 		FD_SET(terminal, &readfds);
@@ -138,15 +159,17 @@ int main(int argc, char **argv)
 		if (select(FD_SETSIZE, &readfds, NULL, NULL, &timeout) == -1) {
 			break;
 		} else {
-			if (FD_ISSET(terminal, &readfds) && transfer_from_serial(terminal, out) == 0)
+			if (FD_ISSET(terminal, &readfds) &&
+					transfer_from_terminal() == 0)
 				break;
 
-			if (FD_ISSET(in, &readfds) && transfer_to_serial(in, terminal) == 0)
+			if (FD_ISSET(in, &readfds) &&
+					transfer_to_terminal() == 0)
 				break;
 		}
 	}
 
-	unconfigure_input(in, &old_input_options);
+	unconfigure_input();
 
 	close(terminal);
 	close(in);
