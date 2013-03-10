@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <errno.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/time.h>
 
@@ -20,9 +21,10 @@ static int terminal;
 static struct termios old_input_options;
 static int escape_state;
 
-int transfer_to_terminal(void)
+bool transfer_to_terminal(void)
 {
 	unsigned char c;
+	bool r = true;
 	int byte_count;
 
 	byte_count = read(in, &c, sizeof(c));
@@ -35,7 +37,7 @@ int transfer_to_terminal(void)
 		} else {
 			switch (c) {
 			case EXIT_CHAR:
-				byte_count = 0;
+				r = false;
 				break;
 			case RESET_CHAR:
 				write(terminal, RESET_SEQUENCE,
@@ -46,19 +48,25 @@ int transfer_to_terminal(void)
 			}
 			escape_state = 0;
 		}
+	} else {
+		r = false;
 	}
-	return byte_count;
+	return r;
 }
 
-int transfer_from_terminal(void)
+bool transfer_from_terminal(void)
 {
 	unsigned char buffer[512];
 	int byte_count;
+	bool r = true;
 
 	byte_count = read(terminal, buffer, sizeof(buffer));
-	if (byte_count > 0)
+	if (byte_count > 0) {
 		write(out, buffer, byte_count);
-	return byte_count;
+	} else {
+		r = false;
+	}
+	return r;
 }
 
 void configure_input(void)
@@ -160,11 +168,11 @@ int main(int argc, char **argv)
 			break;
 		} else {
 			if (FD_ISSET(terminal, &readfds) &&
-					transfer_from_terminal() == 0)
+					transfer_from_terminal() == false)
 				break;
 
 			if (FD_ISSET(in, &readfds) &&
-					transfer_to_terminal() == 0)
+					transfer_to_terminal() == false)
 				break;
 		}
 	}
