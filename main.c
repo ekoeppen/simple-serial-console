@@ -6,6 +6,7 @@
 #include <termios.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/time.h>
 
