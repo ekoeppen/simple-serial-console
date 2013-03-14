@@ -40,8 +40,8 @@ bool transfer_to_terminal(void)
 				r = false;
 				break;
 			case RESET_CHAR:
-				write(terminal, RESET_SEQUENCE,
-						sizeof(RESET_SEQUENCE));
+				write(out, RESET_SEQUENCE,
+				      sizeof(RESET_SEQUENCE));
 				break;
 			default:
 				write(terminal, &c, byte_count);
