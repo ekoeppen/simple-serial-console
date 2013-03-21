@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/time.h>
+#include <getopt.h>
 
 #define ESCAPE_CHAR 0x1d
 #define EXIT_CHAR '.'
@@ -21,6 +22,11 @@ static int out;
 static int terminal;
 static struct termios old_input_options;
 static int escape_state;
+static int speed;
+static char *terminal_device;
+static int opt_ascii = 0;
+static int opt_reset = 0;
+static char *options = "ar";
 
 bool transfer_to_terminal(void)
 {
@@ -58,11 +64,20 @@ bool transfer_to_terminal(void)
 bool transfer_from_terminal(void)
 {
 	unsigned char buffer[512];
+	int i;
 	int byte_count;
 	bool r = true;
 
 	byte_count = read(terminal, buffer, sizeof(buffer));
 	if (byte_count > 0) {
+		if (opt_ascii) {
+			for (i = 0; i < byte_count; i++) {
+				if (buffer[i] > 128 ||
+				    (buffer[i] < ' ' &&
+				     buffer[i] != '\t' && buffer[i] != '\r' && buffer[i] != '\n'))
+					buffer[i] = '.';
+			}
+		}
 		write(out, buffer, byte_count);
 	} else {
 		r = false;
@@ -133,24 +148,49 @@ void setup_signal_handlers(void)
 	signal(SIGTERM, signal_handler);
 }
 
-int main(int argc, char **argv)
+void handle_cmd_line(int argc, char **argv)
 {
-	int speed;
-	struct timeval timeout;
-	fd_set readfds;
+	int c;
 
-	if (argc < 2) {
-		printf("Please specify a terminal.\n");
-		return 1;
+	while ((c = getopt(argc, argv, options)) != -1) {
+		switch (c) {
+		case 'a':
+			opt_ascii = 1;
+			break;
+		case 'r':
+			opt_reset = 1;
+			break;
+		case '?':
+			exit(1);
+			break;
+		default:
+			break;
+		}
 	}
-	if (argc == 3)
-		speed = atoi(argv[2]);
+	if (optind < argc) {
+		terminal_device = argv[optind];
+		optind++;
+	} else {
+		printf("Please specify a terminal.\n");
+		exit(1);
+	}
+	if (optind < argc)
+		speed = atoi(argv[optind]);
 	else
 		speed = 115200;
 
+}
+
+int main(int argc, char **argv)
+{
+	struct timeval timeout;
+	fd_set readfds;
+
+	handle_cmd_line(argc, argv);
+
 	in = dup(0);
 	out = dup(1);
-	terminal = open(argv[1], O_RDWR | O_NOCTTY | O_NONBLOCK);
+	terminal = open(terminal_device, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
 	configure_terminal(speed);
 	configure_input();
@@ -169,16 +209,18 @@ int main(int argc, char **argv)
 			break;
 		} else {
 			if (FD_ISSET(terminal, &readfds) &&
-					transfer_from_terminal() == false)
+			    transfer_from_terminal() == false)
 				break;
 
 			if (FD_ISSET(in, &readfds) &&
-					transfer_to_terminal() == false)
+			    transfer_to_terminal() == false)
 				break;
 		}
 	}
 
 	unconfigure_input();
+	if (opt_reset)
+		write(out, RESET_SEQUENCE, sizeof(RESET_SEQUENCE));
 
 	close(terminal);
 	close(in);
