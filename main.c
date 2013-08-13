@@ -26,7 +26,8 @@ static int speed;
 static char *terminal_device;
 static int opt_ascii = 0;
 static int opt_reset = 0;
-static char *options = "ar";
+static int opt_translate = 0;
+static char *options = "art";
 
 bool transfer_to_terminal(void)
 {
@@ -37,10 +38,15 @@ bool transfer_to_terminal(void)
 	byte_count = read(in, &c, sizeof(c));
 	if (byte_count > 0) {
 		if (!escape_state) {
-			if (c != ESCAPE_CHAR)
-				write(terminal, &c, byte_count);
-			else
+			if (c != ESCAPE_CHAR) {
+				if (!opt_translate || c != '\n') {
+					write(terminal, &c, byte_count);
+				} else {
+					write(terminal, "\r\n", 2);
+				}
+			} else {
 				escape_state = 1;
+			}
 		} else {
 			switch (c) {
 			case EXIT_CHAR:
@@ -159,6 +165,9 @@ void handle_cmd_line(int argc, char **argv)
 			break;
 		case 'r':
 			opt_reset = 1;
+			break;
+		case 't':
+			opt_translate = 1;
 			break;
 		case '?':
 			exit(1);
