@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <getopt.h>
 
 #define ESCAPE_CHAR 0x1d
@@ -157,6 +158,7 @@ void setup_signal_handlers(void)
 void handle_cmd_line(int argc, char **argv)
 {
 	int c;
+	struct stat st;
 
 	while ((c = getopt(argc, argv, options)) != -1) {
 		switch (c) {
@@ -178,6 +180,10 @@ void handle_cmd_line(int argc, char **argv)
 	}
 	if (optind < argc) {
 		terminal_device = argv[optind];
+		if (stat(terminal_device, &st) != 0) {
+			perror(terminal_device);
+			exit(2);
+		}
 		optind++;
 	} else {
 		printf("Please specify a terminal.\n");

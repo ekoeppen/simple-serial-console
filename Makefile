@@ -1,4 +1,4 @@
-CFLAGS = -O2 -Wall -std=c99 -D_BSD_SOURCE
+CFLAGS = -O2 -Wall -Wno-unused-result -std=c99 -D_BSD_SOURCE
 SRCS = main.c
 PROG = serial
 
