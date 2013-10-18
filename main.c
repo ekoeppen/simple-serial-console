@@ -103,6 +103,7 @@ void configure_input(void)
 	options.c_cc[VMIN] = 0;
 	options.c_cc[VTIME] = 10;
 	options.c_cflag |= CLOCAL | CREAD | HUPCL;
+	options.c_cflag &= ~(IXON | IXOFF);
 	options.c_lflag = 0;
 
 	tcflush(in, TCIFLUSH);
@@ -117,6 +118,7 @@ void configure_terminal(int baud)
 
 	options.c_oflag &= ~OPOST;
 	options.c_iflag &= ~INLCR & ~ICRNL & ~INPCK;
+	options.c_cflag &= ~(IXON | IXOFF);
 	options.c_iflag |= IGNPAR;
 	options.c_cflag &= ~PARENB & ~CSTOPB & ~CSIZE & ~CRTSCTS & ~IXANY;
 
