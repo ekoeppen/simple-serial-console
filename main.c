@@ -10,11 +10,14 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <getopt.h>
 
 #define ESCAPE_CHAR 0x1d
 #define EXIT_CHAR '.'
 #define RESET_CHAR 'r'
+#define DTR_SHORT_CHAR 'd'
+#define DTR_LONG_CHAR 'D'
 
 #define RESET_SEQUENCE "\033c"
 
@@ -28,7 +31,40 @@ static char *terminal_device;
 static int opt_ascii = 0;
 static int opt_reset = 0;
 static int opt_translate = 0;
-static char *options = "art";
+static int opt_dtr_short = 0;
+static int opt_dtr_long = 0;
+static char *options = "artdD";
+
+void set_dtr(bool on)
+{
+	unsigned int status;
+
+	ioctl(terminal, TIOCMGET, &status);
+	if (on)
+		status |= TIOCM_DTR;
+	else
+		status &= ~TIOCM_DTR;
+	ioctl(terminal, TIOCMSET, &status);
+}
+
+void toggle_dtr(int delay_ms)
+{
+	set_dtr(false);
+	usleep(delay_ms * 1000);
+	set_dtr(true);
+	usleep(delay_ms * 1000);
+	set_dtr(false);
+}
+
+void dtr_short(void)
+{
+	toggle_dtr(100);
+}
+
+void dtr_long(void)
+{
+	toggle_dtr(1000);
+}
 
 bool transfer_to_terminal(void)
 {
@@ -56,6 +92,12 @@ bool transfer_to_terminal(void)
 			case RESET_CHAR:
 				write(out, RESET_SEQUENCE,
 				      sizeof(RESET_SEQUENCE));
+				break;
+			case DTR_SHORT_CHAR:
+				dtr_short();
+				break;
+			case DTR_LONG_CHAR:
+				dtr_long();
 				break;
 			default:
 				write(terminal, &c, byte_count);
@@ -128,6 +170,11 @@ void configure_terminal(int baud)
 	cfsetspeed(&options, baud);
 	tcflush(terminal, TCIFLUSH);
 	tcsetattr(terminal, TCSANOW, &options);
+
+	if (opt_dtr_short)
+		dtr_short();
+	if (opt_dtr_long)
+		dtr_long();
 }
 
 void unconfigure_input(void)
@@ -170,6 +217,12 @@ void handle_cmd_line(int argc, char **argv)
 			break;
 		case 't':
 			opt_translate = 1;
+			break;
+		case 'd':
+			opt_dtr_short = 1;
+			break;
+		case 'D':
+			opt_dtr_long = 1;
 			break;
 		case '?':
 			exit(1);
