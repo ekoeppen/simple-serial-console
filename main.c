@@ -10,13 +10,21 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <getopt.h>
 
 #define ESCAPE_CHAR 0x1d
 #define EXIT_CHAR '.'
 #define RESET_CHAR 'r'
+#define DTR_LOW_CHAR 'd'
+#define DTR_HIGH_CHAR 'D'
 
 #define RESET_SEQUENCE "\033c"
+
+#define DTR_RTS_INIT_NONE 0
+#define DTR_RTS_INIT_HIGH 1
+#define DTR_RTS_INIT_LOW 2
+#define DTR_PULSE_WIDTH 100
 
 static int in;
 static int out;
@@ -28,7 +36,29 @@ static char *terminal_device;
 static int opt_ascii = 0;
 static int opt_reset = 0;
 static int opt_translate = 0;
-static char *options = "art";
+static int opt_dtr_rts = DTR_RTS_INIT_NONE;
+static char *options = "artdD";
+
+void set_modem_lines(int on, int lines)
+{
+	unsigned int status;
+
+	ioctl(terminal, TIOCMGET, &status);
+	if (on)
+		status |= lines;
+	else
+		status &= ~lines;
+	ioctl(terminal, TIOCMSET, &status);
+}
+
+void toggle_dtr(int active_low, int delay_ms)
+{
+	set_modem_lines(!active_low, TIOCM_DTR);
+	usleep(delay_ms * 1000);
+	set_modem_lines(active_low, TIOCM_DTR);
+	usleep(delay_ms * 1000);
+	set_modem_lines(!active_low, TIOCM_DTR);
+}
 
 bool transfer_to_terminal(void)
 {
@@ -56,6 +86,12 @@ bool transfer_to_terminal(void)
 			case RESET_CHAR:
 				write(out, RESET_SEQUENCE,
 				      sizeof(RESET_SEQUENCE));
+				break;
+			case DTR_LOW_CHAR:
+				toggle_dtr(1, DTR_PULSE_WIDTH);
+				break;
+			case DTR_HIGH_CHAR:
+				toggle_dtr(0, DTR_PULSE_WIDTH);
 				break;
 			default:
 				write(terminal, &c, byte_count);
@@ -130,6 +166,11 @@ void configure_terminal(int baud)
 	cfsetspeed(&options, baud);
 	tcflush(terminal, TCIFLUSH);
 	tcsetattr(terminal, TCSANOW, &options);
+
+	if (opt_dtr_rts == DTR_RTS_INIT_HIGH)
+		set_modem_lines(0, TIOCM_DTR | TIOCM_RTS);
+	else if (opt_dtr_rts == DTR_RTS_INIT_LOW)
+		set_modem_lines(1, TIOCM_DTR | TIOCM_RTS);
 }
 
 void unconfigure_input(void)
@@ -172,6 +213,12 @@ void handle_cmd_line(int argc, char **argv)
 			break;
 		case 't':
 			opt_translate = 1;
+			break;
+		case 'd':
+			opt_dtr_rts = DTR_RTS_INIT_HIGH;
+			break;
+		case 'D':
+			opt_dtr_rts = DTR_RTS_INIT_LOW;
 			break;
 		case '?':
 			exit(1);
