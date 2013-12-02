@@ -15,16 +15,21 @@
 
 #define ESCAPE_CHAR 0x1d
 #define EXIT_CHAR '.'
-#define RESET_CHAR 'r'
-#define DTR_LOW_CHAR 'd'
-#define DTR_HIGH_CHAR 'D'
+#define RESET_CHAR 'x'
+#define DTR_TOGGLE_CHAR 'd'
+#define RTS_TOGGLE_CHAR 'r'
 
 #define RESET_SEQUENCE "\033c"
 
-#define DTR_RTS_INIT_NONE 0
-#define DTR_RTS_INIT_HIGH 1
-#define DTR_RTS_INIT_LOW 2
+#define DTR_INIT_NONE 0
+#define DTR_INIT_HIGH 1
+#define DTR_INIT_LOW 2
 #define DTR_PULSE_WIDTH 100
+
+#define RTS_INIT_NONE 0
+#define RTS_INIT_HIGH 1
+#define RTS_INIT_LOW 2
+#define RTS_PULSE_WIDTH 100
 
 static int in;
 static int out;
@@ -36,8 +41,9 @@ static char *terminal_device;
 static int opt_ascii = 0;
 static int opt_reset = 0;
 static int opt_translate = 0;
-static int opt_dtr_rts = DTR_RTS_INIT_NONE;
-static char *options = "artdD";
+static int opt_dtr = DTR_INIT_NONE;
+static int opt_rts = RTS_INIT_NONE;
+static char *options = "axtdDrR";
 
 void set_modem_lines(int on, int lines)
 {
@@ -51,13 +57,13 @@ void set_modem_lines(int on, int lines)
 	ioctl(terminal, TIOCMSET, &status);
 }
 
-void toggle_dtr(int active_low, int delay_ms)
+void toggle(int line, int active_low, int delay_ms)
 {
-	set_modem_lines(!active_low, TIOCM_DTR);
+	set_modem_lines(!active_low, line);
 	usleep(delay_ms * 1000);
-	set_modem_lines(active_low, TIOCM_DTR);
+	set_modem_lines(active_low, line);
 	usleep(delay_ms * 1000);
-	set_modem_lines(!active_low, TIOCM_DTR);
+	set_modem_lines(!active_low, line);
 }
 
 bool transfer_to_terminal(void)
@@ -73,7 +79,7 @@ bool transfer_to_terminal(void)
 				if (!opt_translate || c != '\n') {
 					write(terminal, &c, byte_count);
 				} else {
-					write(terminal, "\r\n", 2);
+					write(terminal, "\r", 1);
 				}
 			} else {
 				escape_state = 1;
@@ -87,11 +93,11 @@ bool transfer_to_terminal(void)
 				write(out, RESET_SEQUENCE,
 				      sizeof(RESET_SEQUENCE));
 				break;
-			case DTR_LOW_CHAR:
-				toggle_dtr(1, DTR_PULSE_WIDTH);
+			case DTR_TOGGLE_CHAR:
+				toggle(TIOCM_DTR, opt_dtr == DTR_INIT_HIGH, DTR_PULSE_WIDTH);
 				break;
-			case DTR_HIGH_CHAR:
-				toggle_dtr(0, DTR_PULSE_WIDTH);
+			case RTS_TOGGLE_CHAR:
+				toggle(TIOCM_RTS, opt_rts == RTS_INIT_HIGH, RTS_PULSE_WIDTH);
 				break;
 			default:
 				write(terminal, &c, byte_count);
@@ -167,10 +173,12 @@ void configure_terminal(int baud)
 	tcflush(terminal, TCIFLUSH);
 	tcsetattr(terminal, TCSANOW, &options);
 
-	if (opt_dtr_rts == DTR_RTS_INIT_HIGH)
-		set_modem_lines(0, TIOCM_DTR | TIOCM_RTS);
-	else if (opt_dtr_rts == DTR_RTS_INIT_LOW)
-		set_modem_lines(1, TIOCM_DTR | TIOCM_RTS);
+	set_modem_lines(0,
+			(opt_dtr == DTR_INIT_HIGH ? TIOCM_DTR : 0) |
+			(opt_rts == RTS_INIT_HIGH ? TIOCM_RTS : 0));
+	set_modem_lines(1,
+			(opt_dtr == DTR_INIT_LOW ? TIOCM_DTR : 0) |
+			(opt_rts == RTS_INIT_LOW ? TIOCM_RTS : 0));
 }
 
 void unconfigure_input(void)
@@ -208,17 +216,23 @@ void handle_cmd_line(int argc, char **argv)
 		case 'a':
 			opt_ascii = 1;
 			break;
-		case 'r':
+		case 'x':
 			opt_reset = 1;
 			break;
 		case 't':
 			opt_translate = 1;
 			break;
 		case 'd':
-			opt_dtr_rts = DTR_RTS_INIT_HIGH;
+			opt_dtr = DTR_INIT_HIGH;
 			break;
 		case 'D':
-			opt_dtr_rts = DTR_RTS_INIT_LOW;
+			opt_dtr = DTR_INIT_LOW;
+			break;
+		case 'r':
+			opt_rts = RTS_INIT_HIGH;
+			break;
+		case 'R':
+			opt_rts = RTS_INIT_LOW;
 			break;
 		case '?':
 			exit(1);
