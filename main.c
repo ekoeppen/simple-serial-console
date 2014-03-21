@@ -269,6 +269,10 @@ int main(int argc, char **argv)
 	in = dup(0);
 	out = dup(1);
 	terminal = open(terminal_device, O_RDWR | O_NOCTTY | O_NONBLOCK);
+	if (terminal == -1) {
+		perror("Failed to open terminal");
+		exit(3);
+	}
 
 	configure_terminal(speed);
 	configure_input();
