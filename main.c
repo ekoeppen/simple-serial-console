@@ -18,6 +18,7 @@
 #define RESET_CHAR 'x'
 #define DTR_TOGGLE_CHAR 'd'
 #define RTS_TOGGLE_CHAR 'r'
+#define BREAK_CHAR 'b'
 
 #define RESET_SEQUENCE "\033c"
 
@@ -41,9 +42,10 @@ static char *terminal_device;
 static int opt_ascii = 0;
 static int opt_reset = 0;
 static int opt_translate = 0;
+static int opt_flow_control = 0;
 static int opt_dtr = DTR_INIT_NONE;
 static int opt_rts = RTS_INIT_NONE;
-static char *options = "axtdDrR";
+static char *options = "axtdDrRf";
 
 void set_modem_lines(int on, int lines)
 {
@@ -57,6 +59,14 @@ void set_modem_lines(int on, int lines)
 	ioctl(terminal, TIOCMSET, &status);
 }
 
+int clear_to_send(void)
+{
+	unsigned int status;
+
+	ioctl(terminal, TIOCMGET, &status);
+	return !(status & TIOCM_CTS);
+}
+
 void toggle(int line, int active_low, int delay_ms)
 {
 	set_modem_lines(!active_low, line);
@@ -66,9 +76,20 @@ void toggle(int line, int active_low, int delay_ms)
 	set_modem_lines(!active_low, line);
 }
 
+void send_break(void)
+{
+	tcsendbreak(terminal, 0);
+}
+
+void send_data(char *data, unsigned int count)
+{
+	while (opt_flow_control && !clear_to_send());
+	write(terminal, data, count);
+}
+
 bool transfer_to_terminal(void)
 {
-	unsigned char c;
+	char c;
 	bool r = true;
 	int byte_count;
 
@@ -77,9 +98,9 @@ bool transfer_to_terminal(void)
 		if (!escape_state) {
 			if (c != ESCAPE_CHAR) {
 				if (!opt_translate || c != '\n') {
-					write(terminal, &c, byte_count);
+					send_data(&c, byte_count);
 				} else {
-					write(terminal, "\r", 1);
+					send_data("\r", 1);
 				}
 			} else {
 				escape_state = 1;
@@ -99,8 +120,11 @@ bool transfer_to_terminal(void)
 			case RTS_TOGGLE_CHAR:
 				toggle(TIOCM_RTS, opt_rts == RTS_INIT_HIGH, RTS_PULSE_WIDTH);
 				break;
+			case BREAK_CHAR:
+				send_break();
+				break;
 			default:
-				write(terminal, &c, byte_count);
+				send_data(&c, byte_count);
 			}
 			escape_state = 0;
 		}
@@ -218,6 +242,9 @@ void handle_cmd_line(int argc, char **argv)
 			break;
 		case 'x':
 			opt_reset = 1;
+			break;
+		case 'f':
+			opt_flow_control = 1;
 			break;
 		case 't':
 			opt_translate = 1;
