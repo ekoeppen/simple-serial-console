@@ -104,7 +104,7 @@ bool transfer_to_terminal(void)
 				if (!opt_translate || c != '\n') {
 					send_data(&c, byte_count);
 				} else {
-					send_data("\r", 1);
+					send_data("\r\n", 2);
 				}
 			} else {
 				escape_state = 1;
