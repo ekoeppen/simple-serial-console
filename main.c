@@ -15,6 +15,7 @@
 
 #define ESCAPE_CHAR 0x1d
 #define EXIT_CHAR '.'
+#define CTRL_C_CHAR 3
 #define RESET_CHAR 'x'
 #define DTR_TOGGLE_CHAR 'd'
 #define RTS_TOGGLE_CHAR 'r'
@@ -41,11 +42,12 @@ static int speed;
 static char *terminal_device;
 static int opt_ascii = 0;
 static int opt_reset = 0;
+static int opt_exit_ctrl_c = 0;
 static int opt_translate = 0;
 static int opt_flow_control = 0;
 static int opt_dtr = DTR_INIT_NONE;
 static int opt_rts = RTS_INIT_NONE;
-static char *options = "axtdDrRf";
+static char *options = "acxtdDrRf";
 
 void set_modem_lines(int on, int lines)
 {
@@ -96,7 +98,9 @@ bool transfer_to_terminal(void)
 	byte_count = read(in, &c, sizeof(c));
 	if (byte_count > 0) {
 		if (!escape_state) {
-			if (c != ESCAPE_CHAR) {
+			if (opt_exit_ctrl_c && c == CTRL_C_CHAR) {
+				r = false;
+			} else if (c != ESCAPE_CHAR) {
 				if (!opt_translate || c != '\n') {
 					send_data(&c, byte_count);
 				} else {
@@ -242,6 +246,9 @@ void handle_cmd_line(int argc, char **argv)
 			break;
 		case 'x':
 			opt_reset = 1;
+			break;
+		case 'c':
+			opt_exit_ctrl_c = 1;
 			break;
 		case 'f':
 			opt_flow_control = 1;
